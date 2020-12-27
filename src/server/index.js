@@ -195,7 +195,11 @@ async function init() {
         will_scan = will_scan.filter(e => e !== "_to_remove_");
 
         //todo: chokidar will slow the server down very much when it init async
-        setUpFileWatch(will_scan);
+        // setUpFileWatch(will_scan);
+
+        will_scan.forEach(e => {
+            setUpFileWatch([e]);
+        })
     
     }).on('error', (error) => {
         logger.error("[Server Init]", error.message);
@@ -315,7 +319,7 @@ function setUpCacheWatch(){
 let is_chokidar_ready = false;
 const chokidar = require('chokidar');
 function setUpFileWatch(scan_path) {
-    console.log("[chokidar] begin...");
+    console.log("[chokidar] begin...", scan_path);
     let beg = (new Date).getTime();
 
     //watch file change 
@@ -333,15 +337,6 @@ function setUpFileWatch(scan_path) {
         updateStatToDb(path, stats);
 
         if(is_chokidar_ready){
-            // no very useful
-            // if (isCompress(path) && stats.size > 1 * 1024 * 1024) {
-            //     //do it slowly to avoid the file used by the other process
-            //     //this way is cheap than the really detection
-            //     setTimeout(() => {
-            //         listZipContentAndUpdateDb(path);
-            //     }, 3000);
-            // }
-        }else{
             init_count++;
             if (init_count % 2000 === 0) {
                 let end1 = (new Date).getTime();
@@ -371,7 +366,7 @@ function setUpFileWatch(scan_path) {
     watcher.on('ready', () => {
         is_chokidar_ready = true;
         let end1 = (new Date).getTime();
-        console.log(`[chokidar] ${(end1 - beg) / 1000}s scan complete.`);
+        console.log(`[chokidar] ${(end1 - beg) / 1000}s ${scan_path} scan complete.`);
         console.log(`-------------------------------------------------`);
         console.log(`\n\n\n\n\n`);
     })
