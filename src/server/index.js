@@ -197,8 +197,13 @@ async function init() {
         //todo: chokidar will slow the server down very much when it init async
         // setUpFileWatch(will_scan);
 
-        will_scan.forEach(e => {
-            setUpFileWatch([e]);
+        const byHardDrive = _.groupBy(will_scan, e=> {
+            return e.charAt(0);
+        });
+
+        _.keys(byHardDrive).forEach(key => {
+            const pathes = byHardDrive[key];
+            setUpFileWatch(pathes);
         })
     
     }).on('error', (error) => {
