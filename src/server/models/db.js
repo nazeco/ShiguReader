@@ -57,10 +57,14 @@ function insertToTagTable(filePath, tag, type, subtype){
     sqlDb.run("INSERT OR REPLACE INTO tag_table(filePath, tag, type, subtype ) values(?, ?, ?, ?)",  filePath, tag, type, subtype);
 }
 
+let isIndexCreated = false;
 module.exports.createSqlIndex = function(){
-    sqlDb.run("CREATE INDEX IF NOT EXISTS filePath_index ON file_table (filePath)");
-    sqlDb.run("CREATE INDEX IF NOT EXISTS dirPath_index ON file_table (dirPath)");
-    sqlDb.run("CREATE INDEX IF NOT EXISTS tag_index ON tag_table (tag)");
+    if(!isIndexCreated){
+        sqlDb.run("CREATE INDEX IF NOT EXISTS filePath_index ON file_table (filePath)");
+        sqlDb.run("CREATE INDEX IF NOT EXISTS dirPath_index ON file_table (dirPath)");
+        sqlDb.run("CREATE INDEX IF NOT EXISTS tag_index ON tag_table (tag)");
+        isIndexCreated = true;
+    }
 }
 
 const updateFileDb = function (filePath, statObj) {

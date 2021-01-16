@@ -343,26 +343,32 @@ function setUpFileWatch(scan_path) {
 
     let init_count = 0;
 
+    let add_queue = [];
+    const WORK_NUM = 1000;
+
+
     const addCallBack = (path, stats) => {
-        serverUtil.parse(path);
-        updateStatToDb(path, stats);
+
+        setImmediate(()=>{
+            add_queue.push({path, stats});
+            if(add_queue.length > WORK_NUM || is_chokidar_ready){
+                add_queue.forEach(obj => {
+                    const {path, stats} = obj;
+                    serverUtil.parse(path);
+                    updateStatToDb(path, stats);
+    
+                    init_count++;
+                    if (init_count % 2000 === 0) {
+                        let end1 = (new Date).getTime();
+                        console.log(`[chokidar] scan: ${(end1 - beg) / 1000}s  ${init_count} ${path}` );
+                    }
+                });
+                add_queue = [];
+            }
+        })
 
         if(is_chokidar_ready){
-            // no very useful
-            // if (isCompress(path) && stats.size > 1 * 1024 * 1024) {
-            //     //do it slowly to avoid the file used by the other process
-            //     //this way is cheap than the really detection
-            //     setTimeout(() => {
-            //         listZipContentAndUpdateDb(path);
-            //     }, 3000);
-            // }
             db.createSqlIndex();
-        }else{
-            init_count++;
-            if (init_count % 2000 === 0) {
-                let end1 = (new Date).getTime();
-                console.log(`[chokidar] scan: ${(end1 - beg) / 1000}s  ${init_count} ${path}` );
-            }
         }
     };
 
