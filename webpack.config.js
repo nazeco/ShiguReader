@@ -7,6 +7,8 @@ const outputDirectory = 'dist';
 const portConfig = require('./src/config/port-config');
 const {http_port, dev_express_port } = portConfig;
 
+const DashboardPlugin = require("webpack-dashboard/plugin");
+
 const config = {
   entry: ['babel-polyfill', './src/client/index.js'],
   output: {
@@ -60,7 +62,8 @@ const config = {
     new HtmlWebpackPlugin({
       template: './public/index.html',
       favicon: './public/favicon-96x96.png'
-    })
+    }),
+    new DashboardPlugin()
   ]
 };
 
