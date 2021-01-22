@@ -8,6 +8,14 @@ const isWindows = require('is-windows');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 const ini = require('ini');
+const stringHash = require("string-hash");
+let sharp;
+try{
+    sharp = require('sharp')
+    global.sharp = sharp;
+}catch(e){
+    console.error("did not install sharp", e);
+}
 
 global.requireUtil = function (e) {
     return require("../common/util")
@@ -35,14 +43,18 @@ const { isImage, isCompress, isVideo, isMusic, arraySlice,
 
 //set up path
 const rootPath = pathUtil.getRootPath();
-const { cache_folder_name, thumbnail_folder_name, view_img_folder } = userConfig
+const { cache_folder_name, thumbnail_folder_name, view_img_folder, folder_thumbnail_folder_name } = userConfig
 const cachePath = path.join(rootPath, cache_folder_name);
 const thumbnailFolderPath = path.join(rootPath, thumbnail_folder_name);
+const folderThumbnailFolderPath = path.join(rootPath, folder_thumbnail_folder_name);
 global.thumbnailFolderPath = thumbnailFolderPath;
 global.cachePath = cachePath;
+global.folderThumbnailFolderPath = folderThumbnailFolderPath;
 
 const thumbnailDb = require("./models/thumbnailDb");
 const historyDb = require("./models/historyDb");
+
+
 
 //set up user path
 
@@ -165,6 +177,7 @@ async function init() {
         //统一mkdir
         await mkdir(thumbnailFolderPath);
         await mkdir(cachePath);
+        await mkdir(folderThumbnailFolderPath);
         await mkdir(pathUtil.getImgConverterCachePath());
         await mkdir(pathUtil.getZipOutputCachePath());
     
@@ -522,11 +535,27 @@ async function extractThumbnailFromZip(filePath, res, mode, config) {
     }
 }
 
+function shouldWatch(p, stat) {
+    if (isHiddenFile(p) || junk.is(p)) {
+        return false;
+    }
+    const ext = serverUtil.getExt(p);
+    return !ext || isCompress(ext) || isImage(ext);
+}
+
+function getImgFolderThumbnailFileName(imgFolderPath, imgs){
+    const count =  (imgs||[]).filter(isImage).length;
+    const outputFn = stringHash(imgFolderPath).toString() + "_" +  count + ".webp";
+    const outputPath = path.resolve(folderThumbnailFolderPath, outputFn);
+    return outputPath;
+}
+
 //  a huge back ground task 
 //  it generate all thumbnail and will be slow
 let pregenerateThumbnails_lock = false;
 app.post('/api/pregenerateThumbnails', async (req, res) => {
     let path = req.body && req.body.path;
+    const _pathUtil = require("path");
     if (!path) {
         res.send({ failed: true, reason: "NOT PATH" });
         return;
@@ -538,46 +567,51 @@ app.post('/api/pregenerateThumbnails', async (req, res) => {
     pregenerateThumbnails_lock = true;
     const fastUpdateMode = req.body && req.body.fastUpdateMode;
 
-    const allfiles = getAllFilePathes();
-    let totalFiles = allfiles.filter(isCompress);
-    if (path !== "All_Pathes") {
-        totalFiles = totalFiles.filter(e => e.includes(path));
-    }
+    const { pathes } = await fileiterator(path, {
+        doNotNeedInfo: true,
+        filter: shouldWatch
+    });
+    let allZip = pathes.filter(isCompress);
+    let allImgs = pathes.filter(isImage);
 
-    function shouldWatch(p, stat) {
-        if (isHiddenFile(p)) {
-            return false;
+    //--------generate for img folder----------
+    const imgFolders = _.groupBy(allImgs, p => {
+        return _pathUtil.dirname(p)
+    });
+    const folders = _.keys(imgFolders);
+    let total = folders.length;
+    const pregenBeginTime = getCurrentTime();
+    for (let ii = 0; ii < folders.length; ii++) {
+        const folder = folders[ii];
+        const imgs = imgFolders[folder];
+        const thumbInput = serverUtil.chooseThumbnailImage(imgs);
+        if(thumbInput){
+            const outputFilePath = getImgFolderThumbnailFileName(folder, imgs);
+            await sharp(thumbInput).resize({ height: 100 }).toFile(outputFilePath);
+            const time2 = getCurrentTime();
+            const timeUsed = (time2 - pregenBeginTime) / 1000;
+            const secPerFile = timeUsed / ii;
+            const remainTime = (total - ii) * secPerFile / 60;
+            console.log(`[pre-generate minify] total: ${total}   ${(ii/total*100).toFixed(2)}%    ${(secPerFile).toFixed(2)} sec/file    ${remainTime.toFixed(2)} mim left`);
         }
-        const ext = serverUtil.getExt(p);
-        return !ext || isCompress(ext);
-    }
-    
-    if(path && !isAlreadyScan(path)){
-        const { pathes } = await fileiterator(path, {
-            doNotNeedInfo: true,
-            filter: shouldWatch
-        });
-        totalFiles = pathes.filter(isCompress);
     }
 
+    //--------------generate for zip
     let config = {
         fastUpdateMode
     };
 
-    const pregenBeginTime = getCurrentTime();
-    const total = totalFiles.length;
-
+    total = allZip.length;
     const thumbnailNum = thumbnailDb.getThumbCount();
-    if (thumbnailNum / totalFiles.length > 0.3) {
-        totalFiles = _.shuffle(totalFiles);
+    if (thumbnailNum / allZip.length > 0.3) {
+        allZip = _.shuffle(allZip);
     }
 
     res.send({ failed: false });
 
     try {
-        console.log("begin pregenerateThumbnails")
-        for (let ii = 0; ii < totalFiles.length; ii++) {
-            const filePath = totalFiles[ii];
+        for (let ii = 0; ii < allZip.length; ii++) {
+            const filePath = allZip[ii];
             await extractThumbnailFromZip(filePath, null, "pre-generate", config);
             const time2 = getCurrentTime();
             const timeUsed = (time2 - pregenBeginTime) / 1000;

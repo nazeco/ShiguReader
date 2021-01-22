@@ -10,6 +10,8 @@ config.cache_folder_name = "cache";
 
 config.thumbnail_folder_name = "thumbnails";
 
+config.folder_thumbnail_folder_name = "folder_thumbnails";
+
 config.img_convert_cache = "image_convert_cache"
 
 config.zip_output_cache = "zip_output";
